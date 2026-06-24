@@ -110,7 +110,7 @@
 
   function showResult(res){
     if (res && res.ok){
-      document.getElementById('okMsg').textContent = 'Apply: free kava · ' + res.code;
+      document.getElementById('okMsg').textContent = 'Apply: ' + (res.label || 'discount') + ' · ' + res.code;
       document.getElementById('okBox').style.display = 'block';
     } else {
       var r = res ? res.reason : 'error';
