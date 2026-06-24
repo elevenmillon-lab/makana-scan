@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Makana — Coupon scanner</title>
+<style>
+  :root{ --bg:#13110e; --card:#211d17; --accent:#c98a3c; --text:#f3e9dc; --muted:#9c9081;
+         --ok:#2f9e6f; --bad:#c0492f; }
+  *{box-sizing:border-box;}
+  body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+       background:var(--bg);color:var(--text);min-height:100vh;}
+  .wrap{max-width:420px;margin:0 auto;padding:18px;}
+  h1{font-size:18px;font-weight:600;margin:10px 0;text-align:center;}
+  input{width:100%;padding:14px;border-radius:10px;border:1px solid #3a342b;background:#1a160f;color:var(--text);font-size:18px;text-align:center;}
+  button{background:var(--accent);color:#13110e;border:none;border-radius:10px;padding:14px;font-size:16px;font-weight:700;width:100%;cursor:pointer;margin-top:10px;}
+  #reader{width:100%;border-radius:12px;overflow:hidden;margin-top:8px;}
+  .result{text-align:center;padding:34px 16px;border-radius:14px;margin-top:14px;font-size:22px;font-weight:700;display:none;}
+  .result small{display:block;font-size:14px;font-weight:400;margin-top:8px;opacity:.9;}
+  .ok{background:var(--ok);} .bad{background:var(--bad);}
+  .manual{margin-top:18px;border-top:1px solid #2c2820;padding-top:14px;}
+  .muted{color:var(--muted);font-size:13px;text-align:center;}
+  .hidden{display:none;}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <!-- PIN gate -->
+  <div id="gate">
+    <h1>🍃 Makana — Coupon scanner</h1>
+    <p class="muted">Staff only. Enter the PIN.</p>
+    <input id="pin" type="tel" inputmode="numeric" placeholder="PIN" autocomplete="off">
+    <button onclick="checkPin()">Enter</button>
+  </div>
+
+  <!-- Scanner -->
+  <div id="app" class="hidden">
+    <h1>Scan the customer's coupon</h1>
+    <div id="reader"></div>
+    <div id="okBox" class="result ok">✓ Valid coupon<small id="okMsg"></small></div>
+    <div id="badBox" class="result bad">✗ <span id="badMsg"></span></div>
+    <button id="again" class="hidden" onclick="resume()">Scan another</button>
+
+    <div class="manual">
+      <p class="muted">Camera not working? Type the code:</p>
+      <input id="manual" type="text" placeholder="MK-XXXXXX" autocapitalize="characters">
+      <button onclick="redeem(document.getElementById('manual').value)">Redeem manually</button>
+    </div>
+  </div>
+
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js"></script>
+<script>
+  // ── CONFIG ──────────────────────────────────────────────
+  var EXEC = 'https://script.google.com/macros/s/AKfycbxjT8-vnckzDfskKJ6PKYwYP-mqZP6pMFM-Pr8DRrt6DBbFLL7ugJEUpk-fV33UGADgFg/exec';
+  var TOKEN = 'mkscan_4Qp7Lh';   // debe coincidir con CONFIG.API_TOKEN del Apps Script
+  var PIN = '4321';              // debe coincidir con CONFIG.SCANNER_PIN del Apps Script
+  // ────────────────────────────────────────────────────────
+
+  var scanner = null, busy = false;
+
+  function checkPin(){
+    if (document.getElementById('pin').value.trim() === PIN){
+      document.getElementById('gate').classList.add('hidden');
+      document.getElementById('app').classList.remove('hidden');
+      startScanner();
+    } else { alert('Wrong PIN'); }
+  }
+
+  function startScanner(){
+    scanner = new Html5Qrcode('reader');
+    scanner.start({ facingMode: 'environment' }, { fps: 10, qrbox: 240 },
+      onScan, function(){} ).catch(function(){
+        document.getElementById('reader').innerHTML =
+          '<p class="muted">Could not open the camera. Use the manual code below.</p>';
+      });
+  }
+
+  function onScan(text){
+    if (busy) return;
+    busy = true;
+    if (scanner) scanner.pause(true);
+    redeem(text);
+  }
+
+  // JSONP: evita CORS al llamar Apps Script desde otro dominio
+  function jsonp(url){
+    return new Promise(function(resolve, reject){
+      var cb = 'cb_' + Date.now() + '_' + Math.floor(Math.random()*1000);
+      var s = document.createElement('script');
+      var timer = setTimeout(function(){ cleanup(); reject(); }, 12000);
+      function cleanup(){ clearTimeout(timer); delete window[cb]; if (s.parentNode) s.parentNode.removeChild(s); }
+      window[cb] = function(data){ cleanup(); resolve(data); };
+      s.onerror = function(){ cleanup(); reject(); };
+      s.src = url + '&callback=' + cb;
+      document.body.appendChild(s);
+    });
+  }
+
+  function redeem(code){
+    code = (code || '').trim();
+    if (!code) return;
+    hideResults();
+    busy = true;
+    var url = EXEC + '?action=redeem&t=' + encodeURIComponent(TOKEN) + '&code=' + encodeURIComponent(code);
+    jsonp(url).then(showResult).catch(function(){ showResult({ ok:false, reason:'error' }); });
+  }
+
+  function showResult(res){
+    if (res && res.ok){
+      document.getElementById('okMsg').textContent = 'Apply: free kava · ' + res.code;
+      document.getElementById('okBox').style.display = 'block';
+    } else {
+      var r = res ? res.reason : 'error';
+      var msg = r === 'ya_canjeado' ? 'Coupon already used'
+              : r === 'no_existe'   ? 'Invalid code'
+              : r === 'unauthorized'? 'Scanner not authorized'
+              : 'Error, try again';
+      document.getElementById('badMsg').textContent = msg;
+      document.getElementById('badBox').style.display = 'block';
+    }
+    document.getElementById('again').classList.remove('hidden');
+  }
+
+  function hideResults(){
+    document.getElementById('okBox').style.display = 'none';
+    document.getElementById('badBox').style.display = 'none';
+  }
+
+  function resume(){
+    hideResults();
+    document.getElementById('again').classList.add('hidden');
+    document.getElementById('manual').value = '';
+    busy = false;
+    if (scanner) scanner.resume();
+  }
+</script>
+</body>
+</html>
