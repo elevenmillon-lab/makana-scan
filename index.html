@@ -115,6 +115,7 @@
     } else {
       var r = res ? res.reason : 'error';
       var msg = r === 'ya_canjeado' ? 'Coupon already used'
+              : r === 'expirado'    ? 'Coupon expired'
               : r === 'no_existe'   ? 'Invalid code'
               : r === 'unauthorized'? 'Scanner not authorized'
               : 'Error, try again';
